@@ -146,7 +146,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`🔒 API secured with environment variables`);
     console.log(`📁 Serving static files from: ${path.join(__dirname, '../frontend')}`);
