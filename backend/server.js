@@ -65,8 +65,8 @@ app.post('/api/generate-image', async (req, res) => {
         }
 
         // Check if API key is configured
-        if (!process.env.HUGGINGFACE_API_KEY) {
-            console.error('HUGGINGFACE_API_KEY not found in environment variables');
+        if (!process.env.STABILITY_API_KEY) {
+            console.error('STABILITY_API_KEY not found in environment variables');
             return res.status(500).json({
                 error: 'Server configuration error. Please check API key setup.'
             });
@@ -74,29 +74,36 @@ app.post('/api/generate-image', async (req, res) => {
 
         console.log(`Generating image for prompt: "${prompt}"`);
 
-        // Make request to Hugging Face API
+        // Make request to Stability AI API
         const response = await fetch(
-            'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0',
+            'https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image',
             {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+                    'Authorization': `Bearer ${process.env.STABILITY_API_KEY}`,
                     'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({
-                    inputs: prompt,
-                    options: {
-                        wait_for_model: true,
-                        use_cache: false
-                    }
+                    text_prompts: [{
+                        text: prompt,
+                        weight: 1
+                    }],
+                    cfg_scale: 7,
+                    steps: 30,
+                    width: 1024,
+                    height: 1024,
+                    samples: 1
                 })
             }
         );
 
-        console.log(`Hugging Face API response status: ${response.status}`);
+        console.log(`Stability AI API response status: ${response.status}`);
 
         if (!response.ok) {
             let errorMessage = 'Failed to generate image';
+            const errorData = await response.text();
+            console.error('Full error response:', errorData);
             
             if (response.status === 401) {
                 errorMessage = 'API authentication failed. Please check your Hugging Face API key.';
@@ -108,15 +115,23 @@ app.post('/api/generate-image', async (req, res) => {
                 errorMessage = 'Rate limit exceeded, please wait before trying again';
                 console.log('429 Error: Rate limit');
             } else {
-                console.error(`HTTP Error: ${response.status}`);
+                console.error(`HTTP Error ${response.status}: ${errorData}`);
+                errorMessage = `Failed to generate image (${response.status}): ${errorData}`;
             }
             
             return res.status(response.status).json({ error: errorMessage });
         }
 
-        // Convert to buffer and send as base64
-        const buffer = await response.arrayBuffer();
-        const base64Image = Buffer.from(buffer).toString('base64');
+        // Parse the JSON response from Stability AI
+        const responseData = await response.json();
+        
+        // Check if we have images in the response
+        if (!responseData.artifacts || !responseData.artifacts.length) {
+            throw new Error('No image data in response');
+        }
+
+        // Get the base64 image from the first artifact
+        const base64Image = responseData.artifacts[0].base64;
         
         console.log(`Image generated successfully for prompt: "${prompt}"`);
         
@@ -152,10 +167,10 @@ const server = app.listen(PORT, () => {
     console.log(`📁 Serving static files from: ${path.join(__dirname, '../frontend')}`);
     
     // Check if API key is configured
-    if (process.env.HUGGINGFACE_API_KEY) {
-        console.log('✅ Hugging Face API key configured');
+    if (process.env.STABILITY_API_KEY) {
+        console.log('✅ Stability AI API key configured');
     } else {
-        console.error('❌ HUGGINGFACE_API_KEY not found! Please check your .env file');
+        console.error('❌ STABILITY_API_KEY not found! Please check your .env file');
     }
 });
 
